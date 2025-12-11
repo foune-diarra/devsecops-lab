@@ -4,39 +4,23 @@ on:
   push:
     branches: [ "main" ]
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 jobs:
   devsecops:
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------------
-      # 1. Checkout du code
-      # --------------------------------------------------------
+      # 0. Checkout
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # --------------------------------------------------------
-      # 2. Analyse SonarQube
-      # --------------------------------------------------------
-      - name: Set up JDK (required by Sonar)
-        uses: actions/setup-java@v3
-        with:
-          distribution: "temurin"
-          java-version: "17"
-
-      - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@v2
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: "http://YOUR_SONAR_IP:9000"
-        with:
-          args: >
-            -Dsonar.projectKey=devsecops-lab
-            -Dsonar.sources=./api
-
-      # --------------------------------------------------------
-      # 3. Analyse SAST CodeQL
-      # --------------------------------------------------------
+      ############################################
+      # 1. Analyse SAST avec CodeQL
+      ############################################
       - name: Init CodeQL
         uses: github/codeql-action/init@v3
         with:
@@ -45,26 +29,26 @@ jobs:
       - name: Run CodeQL Analysis
         uses: github/codeql-action/analyze@v3
 
-      # --------------------------------------------------------
-      # 4. Analyse sécurité Python avec Bandit
-      # --------------------------------------------------------
+      ############################################
+      # 2. Analyse sécurité Python avec Bandit
+      ############################################
       - name: Install Bandit
         run: pip install bandit
 
-      - name: Run Bandit
+      - name: Run Bandit Scan
         run: bandit -r api --severity-level high
 
-      # --------------------------------------------------------
-      # 5. Build Docker
-      # --------------------------------------------------------
+      ############################################
+      # 3. Build Docker
+      ############################################
       - name: Build Docker image
         run: docker build -t devsecops-api ./docker
 
-      # --------------------------------------------------------
-      # 6. Scan Docker avec Trivy
-      # --------------------------------------------------------
+      ############################################
+      # 4. Scan Docker avec Trivy
+      ############################################
       - name: Trivy Scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v1
         with:
           scan-type: image
           image-ref: devsecops-api
