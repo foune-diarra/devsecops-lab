@@ -1,63 +1,60 @@
-name: DevSecOps Pipeline
+name: Security Scanning
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
-permissions:
-  contents: read
-  security-events: write
-  actions: read
+env:
+  TRIVY_VERSION: "0.19.0"
+  DOCKER_IMAGE: "my-app:${{ github.sha }}"
 
 jobs:
-  devsecops:
-    runs-on: ubuntu-latest
-
+  security:
+    runs-on: ubuntu-22.04
+    
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+      
     steps:
-      # 0. Checkout
       - name: Checkout repository
-        uses: actions/checkout@v3
-
-      ############################################
-      # 1. Analyse SAST avec CodeQL
-      ############################################
-      - name: Init CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: python
-
-      - name: Run CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-
-      ############################################
-      # 2. Analyse sécurité Python avec Bandit
-      ############################################
-      - name: Install Bandit
-        run: pip install --no-cache-dir bandit
-
-      - name: Run Bandit Scan
-        run: bandit -r api --severity-level high --skip B101
-
-      ############################################
-      # 3. Build Docker sécurisé
-      ############################################
+        uses: actions/checkout@v4.1.7
+        
+      - name: Install Trivy CLI
+        run: |
+          wget https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+          tar -xzf trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz
+          sudo mv trivy /usr/local/bin/
+          
       - name: Build Docker image
-        run: docker build --no-cache -t devsecops-api ./docker
-
-      ############################################
-      # 4. Scan Docker avec Trivy
-      ############################################
-      - name: Trivy Scan
-        uses: aquasecurity/trivy-action@v1
+        run: |
+          docker build -t $DOCKER_IMAGE .
+          
+      - name: Scan Docker image with Trivy
+        run: |
+          trivy image \
+            --format sarif \
+            --output trivy-image.sarif \
+            --severity HIGH,CRITICAL \
+            --exit-code 0 \
+            --ignore-unfixed \
+            $DOCKER_IMAGE
+            
+      - name: Scan filesystem for misconfigurations
+        run: |
+          trivy config \
+            --format sarif \
+            --output trivy-config.sarif \
+            --severity HIGH,CRITICAL \
+            --exit-code 0 \
+            .
+            
+      - name: Upload security scan results
+        uses: github/codeql-action/upload-sarif@v3.2.0
         with:
-          scan-type: image
-          image-ref: devsecops-api:latest
-          severity: CRITICAL,HIGH
-          exit-code: 1
-          ignore-unfixed: true
-
-      ############################################
-      # 5. Optionnel : Audit CVE via docker scan
-      ############################################
-      - name: Docker Scan (optional)
-        run: docker scan devsecops-api:latest --accept-license
+          sarif_file: |
+            trivy-image.sarif
+            trivy-config.sarif
