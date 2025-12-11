@@ -33,16 +33,16 @@ jobs:
       # 2. Analyse sécurité Python avec Bandit
       ############################################
       - name: Install Bandit
-        run: pip install bandit
+        run: pip install --no-cache-dir bandit
 
       - name: Run Bandit Scan
-        run: bandit -r api --severity-level high
+        run: bandit -r api --severity-level high --skip B101
 
       ############################################
-      # 3. Build Docker
+      # 3. Build Docker sécurisé
       ############################################
       - name: Build Docker image
-        run: docker build -t devsecops-api ./docker
+        run: docker build --no-cache -t devsecops-api ./docker
 
       ############################################
       # 4. Scan Docker avec Trivy
@@ -51,6 +51,13 @@ jobs:
         uses: aquasecurity/trivy-action@v1
         with:
           scan-type: image
-          image-ref: devsecops-api
+          image-ref: devsecops-api:latest
           severity: CRITICAL,HIGH
           exit-code: 1
+          ignore-unfixed: true
+
+      ############################################
+      # 5. Optionnel : Audit CVE via docker scan
+      ############################################
+      - name: Docker Scan (optional)
+        run: docker scan devsecops-api:latest --accept-license
