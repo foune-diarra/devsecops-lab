@@ -1,0 +1,72 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  devsecops:
+    runs-on: ubuntu-latest
+
+    steps:
+      # --------------------------------------------------------
+      # 1. Checkout du code
+      # --------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # --------------------------------------------------------
+      # 2. Analyse SonarQube
+      # --------------------------------------------------------
+      - name: Set up JDK (required by Sonar)
+        uses: actions/setup-java@v3
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: "http://YOUR_SONAR_IP:9000"
+        with:
+          args: >
+            -Dsonar.projectKey=devsecops-lab
+            -Dsonar.sources=./api
+
+      # --------------------------------------------------------
+      # 3. Analyse SAST CodeQL
+      # --------------------------------------------------------
+      - name: Init CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+      # --------------------------------------------------------
+      # 4. Analyse sécurité Python avec Bandit
+      # --------------------------------------------------------
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit
+        run: bandit -r api --severity-level high
+
+      # --------------------------------------------------------
+      # 5. Build Docker
+      # --------------------------------------------------------
+      - name: Build Docker image
+        run: docker build -t devsecops-api ./docker
+
+      # --------------------------------------------------------
+      # 6. Scan Docker avec Trivy
+      # --------------------------------------------------------
+      - name: Trivy Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: image
+          image-ref: devsecops-api
+          severity: CRITICAL,HIGH
+          exit-code: 1
