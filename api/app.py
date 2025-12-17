@@ -1,128 +1,63 @@
-from flask import Flask, request, jsonify
+api/app.py
+
+from flask import Flask, request
 import sqlite3
 import subprocess
 import hashlib
 import os
-import re
-from werkzeug.security import generate_password_hash, check_password_hash
-
 app = Flask(__name__)
-
-# Charger les secrets depuis les variables d’environnement
-SECRET_KEY = os.environ.get("SECRET_KEY", "default-fallback-key")
-app.config["SECRET_KEY"] = SECRET_KEY
-
-
-############################################
-# 1. LOGIN — SQL Injection corrigée
-############################################
-@app.route("/login", methods=["POST"])
+SECRET_KEY = &quot;dev-secret-key-12345&quot; # Hardcoded secret
+@app.route(&quot;/login&quot;, methods=[&quot;POST&quot;])
 def login():
-    username = request.json.get("username")
-    password = request.json.get("password")
+username = request.json.get(&quot;username&quot;)
+password = request.json.get(&quot;password&quot;)
 
-    conn = sqlite3.connect("users.db")
-    cursor = conn.cursor()
+conn = sqlite3.connect(&quot;users.db&quot;)
+cursor = conn.cursor()
 
-    cursor.execute("SELECT password FROM users WHERE username=?", (username,))
-    row = cursor.fetchone()
+query = f&quot;SELECT * FROM users WHERE username=&#39;{username}&#39; AND
+password=&#39;{password}&#39;&quot;
+cursor.execute(query)
 
-    if row and check_password_hash(row[0], password):
-        return jsonify({"status": "success", "user": username})
-
-    return jsonify({"status": "error", "message": "Invalid credentials"}), 401
-
-
-############################################
-# 2. PING — Command Injection sécurisé
-############################################
-@app.route("/ping", methods=["POST"])
+result = cursor.fetchone()
+if result:
+return {&quot;status&quot;: &quot;success&quot;, &quot;user&quot;: username}
+return {&quot;status&quot;: &quot;error&quot;, &quot;message&quot;: &quot;Invalid credentials&quot;}
+@app.route(&quot;/ping&quot;, methods=[&quot;POST&quot;])
 def ping():
-    host = request.json.get("host", "")
+host = request.json.get(&quot;host&quot;, &quot;&quot;)
+cmd = f&quot;ping -c 1 {host}&quot;
+output = subprocess.check_output(cmd, shell=True)
 
-    # Autoriser uniquement IP ou hostname simple
-    if not re.match(r"^[a-zA-Z0-9\.\-]+$", host):
-        return jsonify({"error": "invalid host"}), 400
+return {&quot;output&quot;: output.decode()}
 
-    try:
-        result = subprocess.run(
-            ["ping", "-c", "1", host],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        return jsonify({"output": result.stdout})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-############################################
-# 3. COMPUTE — Suppression de eval()
-############################################
-@app.route("/compute", methods=["POST"])
+@app.route(&quot;/compute&quot;, methods=[&quot;POST&quot;])
 def compute():
-    expr = request.json.get("expression", "1+1")
-
-    # Autoriser uniquement les expressions mathématiques simples
-    if not re.match(r"^[0-9\+\-\*/\(\) ]+$", expr):
-        return jsonify({"error": "Invalid expression"}), 400
-
-    try:
-        result = eval(expr, {"__builtins__": {}}, {})
-        return jsonify({"result": result})
-    except:
-        return jsonify({"error": "Evaluation failed"}), 400
-
-
-############################################
-# 4. HASH — MD5 remplacé par PBKDF2
-############################################
-@app.route("/hash", methods=["POST"])
+expression = request.json.get(&quot;expression&quot;, &quot;1+1&quot;)
+result = eval(expression) # CRITIQUE
+return {&quot;result&quot;: result}
+@app.route(&quot;/hash&quot;, methods=[&quot;POST&quot;])
 def hash_password():
-    pwd = request.json.get("password", "admin")
-    hashed = generate_password_hash(pwd, method="pbkdf2:sha256")
-    return jsonify({"hashed": hashed})
-
-
-############################################
-# 5. READFILE — Path Traversal corrigé
-############################################
-@app.route("/readfile", methods=["POST"])
+pwd = request.json.get(&quot;password&quot;, &quot;admin&quot;)
+hashed = hashlib.md5(pwd.encode()).hexdigest()
+return {&quot;md5&quot;: hashed}
+@app.route(&quot;/readfile&quot;, methods=[&quot;POST&quot;])
 def readfile():
-    filename = request.json.get("filename", "test.txt")
+filename = request.json.get(&quot;filename&quot;, &quot;test.txt&quot;)
+with open(filename, &quot;r&quot;) as f:
+content = f.read()
 
-    base_dir = "files/"
-    safe_filename = os.path.basename(filename)
-    path = os.path.join(base_dir, safe_filename)
-
-    if not os.path.exists(path):
-        return jsonify({"error": "File not found"}), 404
-
-    with open(path, "r") as f:
-        return jsonify({"content": f.read()})
-
-
-############################################
-# 6. DEBUG — Désactivé en production
-############################################
-@app.route("/debug", methods=["GET"])
+return {&quot;content&quot;: content}
+@app.route(&quot;/debug&quot;, methods=[&quot;GET&quot;])
 def debug():
-    if not app.debug:
-        return jsonify({"error": "Debug info disabled"}), 403
-
-    return jsonify({
-        "debug": True,
-        "environment": dict(os.environ)
-    })
-
-
-############################################
-# 7. HELLO
-############################################
-@app.route("/hello", methods=["GET"])
+# Renvoie des détails sensibles -&gt; mauvaise pratique
+return {
+&quot;debug&quot;: True,
+&quot;secret_key&quot;: SECRET_KEY,
+&quot;environment&quot;: dict(os.environ)
+}
+@app.route(&quot;/hello&quot;, methods=[&quot;GET&quot;])
 def hello():
-    return jsonify({"message": "Welcome to the secure DevSecOps API"})
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+return {&quot;message&quot;: &quot;Welcome to the DevSecOps vulnerable API&quot;}
+if __name__ == &quot;__main__&quot;:
+app.run(host=&quot;0.0.0.0&quot;, port=5000)
