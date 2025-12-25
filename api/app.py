@@ -51,9 +51,10 @@ def compute():
 @app.route("/hash", methods=["POST"])
 def hash_password():
     pwd = request.json.get("password", "admin")
-    hashed = hashlib.md5(pwd.encode()).hexdigest()
-
-    return {"md5": hashed}
+# hashed = hashlib.md5(pwd.encode()).hexdigest()
+salt = bcrypt.gensalt()
+hashed = bcrypt.hashpwd(pwd.encode(), salt)
+return {"md5": hashed}
 
 
 @app.route("/readfile", methods=["POST"])
