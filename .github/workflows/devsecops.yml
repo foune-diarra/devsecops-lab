@@ -7,7 +7,10 @@ on:
 permissions:
   contents: read
   security-events: write
-  actions: rea
+  actions: read
+
+jobs:
+  devsecops:
     runs-on: ubuntu-latest
 
     steps:
